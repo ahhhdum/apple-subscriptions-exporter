@@ -1,17 +1,175 @@
+// Structure validator class
+class StructureValidator {
+  constructor() {
+    this.version = '1.0.1';
+    this.selectors = {
+      purchase: 'div.purchase.loaded',
+      header: 'h3.purchase-header',
+      date: 'span[data-auto-test-id*="PurchaseHeader.Display.Date"]',
+      orderId: 'span[data-auto-test-id*="PurchaseHeader.Display.WebOrder"]',
+      totalAmount: 'span[data-auto-test-id*="Display.Invoice.Amount"]',
+      purchaseDetails: 'div.purchase-details',
+      documentNo: 'span[data-auto-test-id*="PurchaseDetails.Display.DocumentNumber"]',
+      billedTo: '[data-auto-test-id*="PaymentMethod"]',
+      billingName: '[data-auto-test-id*="PurchaseDetails.Display.Name"]',
+      itemList: 'ul.pli-list',
+      item: 'li.pli',
+      itemName: 'div[aria-label]',
+      publisher: 'div.pli-publisher',
+      itemPrice: 'div.pli-price span'
+    };
+
+    // Define which elements are required vs optional
+    this.requiredElements = {
+      'Purchase Header': this.selectors.header,
+      'Date': this.selectors.date,
+      'Order ID': this.selectors.orderId
+    };
+
+    this.requiredItemElements = {
+      'Item Name': this.selectors.itemName,
+      'Price': this.selectors.itemPrice
+    };
+
+    // Optional elements don't need validation
+    this.optionalElements = [
+      'itemDateTime',
+      'subscriptionInfo',
+      'manageSubLink'
+    ];
+  }
+
+  async validate() {
+    const errors = [];
+    const timestamp = new Date().toISOString();
+
+    try {
+      // Check if we have any purchases
+      const purchases = document.querySelectorAll(this.selectors.purchase);
+      if (purchases.length === 0) {
+        return {
+          isValid: false,
+          version: this.version,
+          timestamp,
+          errors: [{
+            message: 'No purchases found on the page. Make sure you are on the correct page and purchases have loaded.',
+            timestamp
+          }]
+        };
+      }
+
+      // Take the first purchase for structure validation
+      const purchase = purchases[0];
+      
+      // Validate required elements
+      for (const [name, selector] of Object.entries(this.requiredElements)) {
+        if (!purchase.querySelector(selector)) {
+          errors.push({
+            message: `${name} element not found. The page structure may have changed.`,
+            timestamp,
+            selector
+          });
+        }
+      }
+
+      // Check for items
+      const items = purchase.querySelectorAll(this.selectors.item);
+      if (items.length === 0) {
+        errors.push({
+          message: 'No items found in the purchase. The page structure may have changed.',
+          timestamp
+        });
+      } else {
+        // Validate item structure (only required elements)
+        const item = items[0];
+        for (const [name, selector] of Object.entries(this.requiredItemElements)) {
+          if (!item.querySelector(selector)) {
+            errors.push({
+              message: `${name} element not found in item. The item structure may have changed.`,
+              timestamp,
+              selector
+            });
+          }
+        }
+      }
+
+      return {
+        isValid: errors.length === 0,
+        version: this.version,
+        timestamp,
+        errors
+      };
+    } catch (error) {
+      return {
+        isValid: false,
+        version: this.version,
+        timestamp,
+        errors: [{
+          message: `Validation error: ${error.message}`,
+          timestamp
+        }]
+      };
+    }
+  }
+}
+
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'extract') {
-    extractTransactionsAsync(request.maxPurchases)
-      .then(transactions => {
-        const csv = convertToCSV(transactions);
-        sendResponse({ success: true, csv });
+  if (request.action === 'validate') {
+    // Handle validation request
+    const validator = new StructureValidator();
+    validator.validate()
+      .then(results => {
+        sendResponse(results);
       })
       .catch(error => {
-        sendResponse({ success: false, error: error.message });
+        sendResponse({ 
+          isValid: false, 
+          errors: [{
+            message: error.message,
+            timestamp: new Date().toISOString()
+          }]
+        });
+      });
+    return true; // Required for async response
+  }
+  else if (request.action === 'extract') {
+    validateAndExtract(request.maxPurchases)
+      .then(result => {
+        sendResponse(result);
+      })
+      .catch(error => {
+        sendResponse({ 
+          success: false, 
+          error: error.message,
+          details: error.validationResults
+        });
       });
     return true; // Required for async response
   }
 });
+
+async function validateAndExtract(maxPurchases) {
+  // Validate page structure first
+  const validator = new StructureValidator();
+  const validationResults = await validator.validate();
+
+  // If validation fails, return detailed error
+  if (!validationResults.isValid) {
+    const error = new Error('Page structure has changed. Please update the extension.');
+    error.validationResults = validationResults;
+    throw error;
+  }
+
+  // If structure is valid, proceed with extraction
+  const transactions = await extractTransactionsAsync(maxPurchases);
+  return {
+    success: true,
+    csv: convertToCSV(transactions),
+    processedCount: transactions.length,
+    validationResults
+  };
+}
 
 async function waitForElement(selector, parent = document) {
   return new Promise((resolve) => {
@@ -151,9 +309,8 @@ async function extractTransactionsAsync(maxPurchases = 50) {
           const publisher = item.querySelector('div.pli-publisher')?.textContent.trim() || '';
           const itemDateTime = item.querySelector('div.pli-purchase-date[data-auto-test-id="RAP2.PurchaseList.PLIDetails.Value.Date"]')?.textContent.trim() || '';
           
-          // Subscription info and management
+          // Subscription info
           const subscriptionInfo = item.querySelector('div.pli-subscription-info[data-auto-test-id*="Display.SubscriptionInfo"]')?.textContent.trim() || '';
-          const manageSubLink = item.querySelector('a.pli-manage-subscription-link[data-auto-test-id="RAP2.PurchaseList.PLI.Button.ManageSubscriptions"]')?.getAttribute('href') || '';
           
           // Price (with more specific selector)
           const priceSpan = item.querySelector('div.pli-price span[data-auto-test-id*="Display.Price"]');
@@ -174,8 +331,7 @@ async function extractTransactionsAsync(maxPurchases = 50) {
             'Item Price': itemPrice,
             'Order Total': totalAmount,
             'Payment Method': billedTo,
-            'Billing Name': billingName,
-            'Subscription Management': manageSubLink
+            'Billing Name': billingName
           });
         }
       } catch (error) {

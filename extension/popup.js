@@ -20,6 +20,7 @@ document.getElementById('exportButton').addEventListener('click', async () => {
   
   try {
     status.textContent = '';
+    status.className = '';
     loading.style.display = 'block';
     exportButton.disabled = true;
 
@@ -34,19 +35,11 @@ document.getElementById('exportButton').addEventListener('click', async () => {
       return;
     }
 
-    // Set a timeout for the entire operation (15 minutes)
-    const timeout = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Operation timed out. Please try with fewer purchases.')), 900000)
-    );
-
     // Send message to content script to start extraction
-    const extractionPromise = chrome.tabs.sendMessage(tab.id, { 
+    const response = await chrome.tabs.sendMessage(tab.id, { 
       action: 'extract',
       maxPurchases: purchaseCount
     });
-
-    // Race between the extraction and timeout
-    const response = await Promise.race([extractionPromise, timeout]);
 
     if (response.success) {
       // Create and download the CSV file
@@ -63,9 +56,18 @@ document.getElementById('exportButton').addEventListener('click', async () => {
       status.textContent = `Export completed successfully! Processed ${response.processedCount || purchaseCount} purchases.`;
     } else {
       const errorMessage = response.error || 'Unknown error occurred';
-      status.textContent = `Error: ${errorMessage}`;
+      if (errorMessage.includes('Page structure has changed')) {
+        status.className = 'error-status';
+        status.innerHTML = 'The page structure appears to have changed. This might be due to an Apple website update.<br><br>' +
+          'Please <a href="https://github.com/ahhhdum/apple-subscriptions-exporter/issues" target="_blank">report this issue</a> ' +
+          'so we can update the extension.';
+      } else {
+        status.className = 'error-status';
+        status.textContent = `Error: ${errorMessage}`;
+      }
       console.error('Export error:', {
         error: errorMessage,
+        details: response.details,
         timestamp: new Date().toISOString(),
         version: '1.0.1',
         purchaseCount
@@ -73,6 +75,7 @@ document.getElementById('exportButton').addEventListener('click', async () => {
     }
   } catch (error) {
     const errorMessage = error.message || 'Unknown error occurred';
+    status.className = 'error-status';
     status.textContent = `Error: ${errorMessage}`;
     console.error('Extension error:', {
       error: errorMessage,

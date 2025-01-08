@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Apple Subscriptions Exporter",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Export your Apple purchase and subscription history to CSV format",
   "homepage_url": "https://github.com/ahhhdum/apple-subscriptions-exporter",
   "author": "Adam Shapira",

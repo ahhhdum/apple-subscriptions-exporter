@@ -1,90 +1,87 @@
-# Apple Subscriptions Exporter
+# Apple Purchase History Exporter
 
-A Chrome extension to export your Apple purchase and subscription history to CSV format.
+A Chrome extension that helps you export your Apple purchase history from the Report a Problem page to CSV format.
 
 ## Features
 
-- Export Apple purchase history to CSV
-- Configurable number of purchases to export (1-1000)
-- Handles both paid and free purchases
-- Extracts detailed information including:
-  - Purchase dates and times
-  - Order IDs and document numbers
-  - Item names and publishers
-  - Prices and total amounts
-  - Payment methods
-  - Subscription management links
+- Export purchase history to CSV with detailed information
+- Configurable number of purchases to process (1-1000)
+- Progress indicator while processing
+- Automatic page structure validation
+- Human-like interaction to prevent detection
+- Error handling with detailed feedback
 
 ## Installation
 
-1. Download the latest release from the [releases page](https://github.com/ahhhdum/apple-subscriptions-exporter/releases)
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable "Developer mode" in the top right
-4. Click "Load unpacked" and select the downloaded extension folder
+### From Chrome Web Store
+*(Coming soon)*
 
-Or install from the Chrome Web Store (coming soon)
+### Manual Installation
+1. Download the latest release from the [releases page](https://github.com/ahhhdum/apple-subscriptions-exporter/releases)
+2. Unzip the downloaded file
+3. Open Chrome and go to `chrome://extensions/`
+4. Enable "Developer mode" in the top right
+5. Click "Load unpacked" and select the unzipped extension folder
 
 ## Usage
 
 1. Go to [Apple's Report a Problem page](https://reportaproblem.apple.com)
 2. Click the extension icon in your Chrome toolbar
-3. Enter the number of purchases you want to export (default: 50)
+3. Enter the number of purchases you want to process (default: 50)
 4. Click "Export Purchases"
 5. Wait for the process to complete
-6. Your purchases will be saved as a CSV file
+6. The CSV file will be downloaded automatically
 
-## Notes
+### CSV Columns
 
-- Processing large numbers of purchases may take several minutes
-- Keep the page open during export
-- Free items and items without receipts are included but may have limited information
-- The extension requires access to reportaproblem.apple.com only
+- Purchase Date
+- Item Date & Time
+- Order ID
+- Document Number
+- Item Name
+- Publisher
+- Item Description
+- Item Price
+- Order Total
+- Payment Method
+- Billing Name
 
 ## Development
 
-To work on the extension:
-
 1. Clone the repository
-```bash
-git clone https://github.com/ahhhdum/apple-subscriptions-exporter.git
-```
-
 2. Make your changes
-
-3. Test the extension:
-   - Go to `chrome://extensions/`
-   - Enable "Developer mode"
-   - Click "Load unpacked"
-   - Select the extension folder
+3. Test the extension locally using Chrome's "Load unpacked" feature
+4. Submit a pull request with your changes
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Issues and Feature Requests
+## Issues
 
-Please use the [GitHub issue tracker](https://github.com/ahhhdum/apple-subscriptions-exporter/issues) to:
-- Report bugs
-- Request features
-- Get help with the extension
-
-## Privacy
-
-This extension:
-- Only accesses the Apple Report a Problem page
-- Does not collect any personal information
-- Processes all data locally in your browser
-- Does not send data to any external servers
+If you encounter any problems or have suggestions, please [create an issue](https://github.com/ahhhdum/apple-subscriptions-exporter/issues).
 
 ## License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Version History
 
-- v1.0.1 - Added support for large exports, improved error handling
-- v1.0.0 - Initial release 
+### 1.0.2
+- Removed subscription management column
+- Added progress indicator while processing
+- Added random delays between actions
+- Made date field optional for free purchases
+- Improved error handling with clearer messages
+- Added direct link to report issues when validation fails
+- Updated selectors to be more resilient to page changes
+
+### 1.0.1
+- Added support for large exports
+- Initial error handling improvements
+
+### 1.0.0
+- Initial release
+- Basic export functionality
+- CSV download
+- Page structure validation 
