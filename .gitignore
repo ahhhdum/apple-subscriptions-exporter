@@ -2,6 +2,10 @@
 Parse Subscriptions.py
 Sample HTML.html
 sample HTML.html
+transactions.csv
+*.html
+*.py
+*.csv
 
 # OS files
 .DS_Store
@@ -37,4 +41,8 @@ __pycache__/
 .Python
 env/
 venv/
-ENV/ 
+ENV/
+
+# Exceptions for extension files
+!extension/**/*.html
+!extension/**/*.js 
