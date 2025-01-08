@@ -61,27 +61,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 If you encounter any problems or have suggestions, please [create an issue](https://github.com/ahhhdum/apple-subscriptions-exporter/issues).
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Version History
-
-### 1.0.2
-- Removed subscription management column
-- Added progress indicator while processing
-- Added random delays between actions
-- Made date field optional for free purchases
-- Improved error handling with clearer messages
-- Added direct link to report issues when validation fails
-- Updated selectors to be more resilient to page changes
-
-### 1.0.1
-- Added support for large exports
-- Initial error handling improvements
-
-### 1.0.0
-- Initial release
-- Basic export functionality
-- CSV download
-- Page structure validation 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 

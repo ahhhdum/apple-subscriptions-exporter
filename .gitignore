@@ -25,6 +25,7 @@ Thumbs.db
 # Build output
 dist/
 build/
+releases/
 *.zip
 
 # Node.js
