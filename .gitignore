@@ -34,4 +34,9 @@ node_modules/
 # Development files
 dev/
 temp/
-tmp/ 
+tmp/
+
+# Local development scripts
+Parse\ Subscriptions.py
+sample\ HTML.html
+transactions.csv 
