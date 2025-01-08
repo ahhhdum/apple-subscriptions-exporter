@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Apple Subscriptions Exporter",
+  "version": "1.0",
+  "description": "Export your Apple subscription history to CSV",
+  "permissions": [
+    "activeTab",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://reportaproblem.apple.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16x16.png",
+      "48": "icons/48x48.png",
+      "128": "icons/128x128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://reportaproblem.apple.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+} 
