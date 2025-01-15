@@ -113,6 +113,31 @@ class StructureValidator {
   }
 }
 
+let currentAbortController = null;
+
+function createNewAbortController() {
+  if (currentAbortController) {
+    currentAbortController.abort(); // Cancel any existing operation
+  }
+  currentAbortController = new AbortController();
+  return currentAbortController.signal;
+}
+
+// Debug logging helper
+function debugLog(message, data = null) {
+  // Only log in development/testing environments
+  if (!chrome.runtime.getManifest().version.includes('dev')) {
+    return;
+  }
+  
+  const timestamp = new Date().toISOString();
+  if (data) {
+    console.log(`[${timestamp}] ${message}`, data);
+  } else {
+    console.log(`[${timestamp}] ${message}`);
+  }
+}
+
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'validate') {
@@ -134,22 +159,57 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Required for async response
   }
   else if (request.action === 'extract') {
-    validateAndExtract(request.maxPurchases)
+    const signal = createNewAbortController();
+    
+    validateAndExtract(request.maxPurchases, signal)
       .then(result => {
-        sendResponse(result);
+        const transactions = result.transactions || [];
+        const csv = convertToCSV(transactions);
+        const processedCount = transactions.length;
+
+        if (result.cancelled) {
+          debugLog('Export cancelled', { processedCount });
+          sendResponse({
+            success: false,
+            wasCancelled: true,
+            csv,
+            processedCount
+          });
+        } else {
+          debugLog('Export completed', { processedCount });
+          sendResponse({
+            success: true,
+            csv,
+            processedCount
+          });
+        }
       })
       .catch(error => {
+        debugLog('Export error', { error });
         sendResponse({ 
           success: false, 
           error: error.message,
-          details: error.validationResults
+          details: error.validationResults,
+          wasCancelled: error.name === 'AbortError',
+          processedCount: 0,
+          csv: ''
         });
       });
-    return true; // Required for async response
+    return true;
+  }
+  else if (request.action === 'stopExtraction') {
+    if (currentAbortController) {
+      currentAbortController.abort();
+      debugLog('Export stopped by user');
+      sendResponse({ success: true, message: 'Extraction stopped' });
+    } else {
+      sendResponse({ success: false, message: 'No extraction in progress' });
+    }
+    return true;
   }
 });
 
-async function validateAndExtract(maxPurchases) {
+async function validateAndExtract(maxPurchases, signal) {
   // Validate page structure first
   const validator = new StructureValidator();
   const validationResults = await validator.validate();
@@ -162,13 +222,30 @@ async function validateAndExtract(maxPurchases) {
   }
 
   // If structure is valid, proceed with extraction
-  const transactions = await extractTransactionsAsync(maxPurchases);
-  return {
+  const result = await extractTransactionsAsync(maxPurchases, signal);
+  debugLog('Extract result before processing', result);  // Add debug log
+  
+  // Handle both successful and cancelled cases
+  if (result.cancelled) {
+    const response = {
+      success: false,
+      cancelled: true,
+      transactions: result.transactions,
+      processedCount: result.transactions.length,
+      validationResults
+    };
+    debugLog('Cancelled response being returned', response);  // Add debug log
+    return response;
+  }
+  
+  const response = {
     success: true,
-    csv: convertToCSV(transactions),
-    processedCount: transactions.length,
+    transactions: result.transactions,
+    processedCount: result.transactions.length,
     validationResults
   };
+  debugLog('Success response being returned', response);  // Add debug log
+  return response;
 }
 
 async function waitForElement(selector, parent = document) {
@@ -223,24 +300,90 @@ async function expandAndWaitForDetails(purchase) {
   }
 }
 
-async function loadMorePurchases(targetCount) {
+async function loadMorePurchases(targetCount, signal) {
   const getLoadedCount = () => document.querySelectorAll('div.purchase.loaded').length;
   let currentCount = getLoadedCount();
+  
+  // Configuration for stall detection
+  const TIMEOUT_MS = 5000;  // 5 seconds timeout for new items
+  const STALL_THRESHOLD = 3;  // Number of consecutive timeouts before considering it stalled
+  const MIN_ITEMS_PER_LOAD = 1;  // Minimum number of new items expected per load
+  
+  let stallCount = 0;
+  let lastProgressTimestamp = Date.now();
   let previousCount = 0;
-  let attempts = 0;
-  const maxAttempts = 10; // Prevent infinite loops
 
-  while (currentCount < targetCount && attempts < maxAttempts && currentCount !== previousCount) {
+  while (currentCount < targetCount) {
+    // Check for cancellation
+    if (signal?.aborted) {
+      throw new DOMException('Operation cancelled by user', 'AbortError');
+    }
+
     previousCount = currentCount;
     
     // Scroll to bottom to trigger loading
     window.scrollTo(0, document.body.scrollHeight);
     
-    // Wait for new items to load (up to 2 seconds)
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
+    // Wait for new items with timeout
+    const newItemsLoaded = await Promise.race([
+      // Wait for new items to appear
+      new Promise(async (resolve) => {
+        let checkAttempts = 0;
+        const maxCheckAttempts = 10;
+        
+        while (checkAttempts < maxCheckAttempts && !signal?.aborted) {
+          await new Promise(r => setTimeout(r, 500)); // Check every 500ms
+          const newCount = getLoadedCount();
+          if (newCount > previousCount) {
+            resolve(true);
+            break;
+          }
+          checkAttempts++;
+        }
+        resolve(false);
+      }),
+      // Timeout after TIMEOUT_MS
+      new Promise(resolve => setTimeout(() => resolve(false), TIMEOUT_MS)),
+      // Add cancellation promise
+      new Promise((_, reject) => {
+        if (signal) {
+          signal.addEventListener('abort', () => 
+            reject(new DOMException('Operation cancelled by user', 'AbortError'))
+          );
+        }
+      })
+    ]).catch(error => {
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+      return false;
+    });
+
     currentCount = getLoadedCount();
-    attempts++;
+    const itemsLoaded = currentCount - previousCount;
+
+    // Check if we made progress
+    if (!newItemsLoaded || itemsLoaded < MIN_ITEMS_PER_LOAD) {
+      stallCount++;
+      console.warn(`No new items loaded. Stall count: ${stallCount}/${STALL_THRESHOLD}`);
+      
+      if (stallCount >= STALL_THRESHOLD) {
+        console.error('Process appears to be stalled - no new items loaded after multiple attempts');
+        // Return what we have so far rather than throwing an error
+        return currentCount;
+      }
+    } else {
+      // Reset stall count if we made progress
+      stallCount = 0;
+      lastProgressTimestamp = Date.now();
+      console.log(`Loaded ${itemsLoaded} new items. Total: ${currentCount}/${targetCount}`);
+    }
+
+    // Additional safety check - if total time since last progress is too long
+    if (Date.now() - lastProgressTimestamp > TIMEOUT_MS * STALL_THRESHOLD) {
+      console.error('Process timed out - no significant progress made for an extended period');
+      return currentCount;
+    }
   }
 
   // Scroll back to top
@@ -248,7 +391,7 @@ async function loadMorePurchases(targetCount) {
   return currentCount;
 }
 
-async function extractTransactionsAsync(maxPurchases = 50) {
+async function extractTransactionsAsync(maxPurchases = 50, signal) {
   const transactions = [];
   
   // Add initial progress indicator
@@ -259,24 +402,25 @@ async function extractTransactionsAsync(maxPurchases = 50) {
   try {
     // First, try to load the requested number of purchases
     progressDiv.textContent = 'Loading purchases...';
-    const loadedCount = await loadMorePurchases(maxPurchases);
+    const loadedCount = await loadMorePurchases(maxPurchases, signal);
+    debugLog('Loaded purchases', { count: loadedCount });
     
     // Find all transactions
     const purchases = document.querySelectorAll('div.purchase.loaded');
-    
-    // Use configured limit or all available if less than requested
     const purchasesToProcess = Array.from(purchases).slice(0, maxPurchases);
     
     // Process purchases sequentially to avoid overwhelming the page
     for (let i = 0; i < purchasesToProcess.length; i++) {
       const purchase = purchasesToProcess[i];
+      
       try {
-        // Update progress
         progressDiv.textContent = `Processing ${i + 1} of ${purchasesToProcess.length}...`;
         
-        // Extract purchase-level details from header first
+        // Extract purchase-level details
         const header = purchase.querySelector('h3.purchase-header');
         const date = header?.querySelector('span[data-auto-test-id="RAP2.PurchaseList.PurchaseHeader.Display.Date"]')?.textContent.trim() || '';
+        debugLog(`Processing purchase from date: ${date}`);
+
         const orderId = header?.querySelector('span[data-auto-test-id="RAP2.PurchaseList.PurchaseHeader.Display.WebOrder"]')?.textContent.trim() || '';
         const totalAmountSpan = header?.querySelector('span[data-auto-test-id="RAP2.PurchaseList.Display.Invoice.Amount"]');
         const totalAmount = totalAmountSpan?.textContent.trim() || '';
@@ -308,8 +452,6 @@ async function extractTransactionsAsync(maxPurchases = 50) {
           const itemName = item.querySelector('div[aria-label]')?.getAttribute('aria-label')?.trim() || '';
           const publisher = item.querySelector('div.pli-publisher')?.textContent.trim() || '';
           const itemDateTime = item.querySelector('div.pli-purchase-date[data-auto-test-id="RAP2.PurchaseList.PLIDetails.Value.Date"]')?.textContent.trim() || '';
-          
-          // Subscription info
           const subscriptionInfo = item.querySelector('div.pli-subscription-info[data-auto-test-id*="Display.SubscriptionInfo"]')?.textContent.trim() || '';
           
           // Price (with more specific selector)
@@ -334,21 +476,51 @@ async function extractTransactionsAsync(maxPurchases = 50) {
             'Billing Name': billingName
           });
         }
+
+        // Check for cancellation after processing each purchase
+        if (signal?.aborted) {
+          progressDiv.textContent = `Cancelling... Processed ${transactions.length} purchases`;
+          throw new DOMException('Operation cancelled by user', 'AbortError');
+        }
+
       } catch (error) {
-        console.error('Error processing purchase:', error);
-        // Continue with next purchase
+        if (error.name === 'AbortError') {
+          throw error;
+        }
+        debugLog('Error processing purchase', { error, purchaseIndex: i });
       }
     }
+
+    return {
+      success: true,
+      transactions,
+      processedCount: transactions.length
+    };
+
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        cancelled: true,
+        transactions: transactions || [],
+        processedCount: transactions ? transactions.length : 0
+      };
+    }
+    throw error;
   } finally {
-    // Remove progress indicator
     document.body.removeChild(progressDiv);
+    if (!signal?.aborted) {
+      currentAbortController = null;
+    }
   }
-  
-  return transactions;
 }
 
 function convertToCSV(transactions) {
-  if (transactions.length === 0) return '';
+  // Handle null/undefined/empty input
+  if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+    console.warn('No transactions to convert to CSV');
+    return '';
+  }
   
   const headers = Object.keys(transactions[0]);
   const csvRows = [];

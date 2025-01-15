@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-01-15
+
+### Added
+- Export cancellation functionality with "Stop Export" button
+- Partial data download support when export is cancelled
+- Debug logging infrastructure for development mode
+- Progress indicator shows number of processed items
+
+### Changed
+- Improved stall detection with better timeout handling
+- Enhanced error handling and user feedback
+- Better handling of partial exports with '_partial' suffix in filename
+
+### Fixed
+- Issue with infinite scroll stalling
+- Missing transaction data in cancelled exports
+- Progress indicator accuracy
+
+### Documentation
+- Added detailed development mode testing instructions
+- Updated testing workflow with cancellation scenarios
+- Added debug logging documentation
+
 ## [1.0.2] - 2024-01-08
 
 ### Added

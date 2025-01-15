@@ -25,12 +25,25 @@
       background-color: #cccccc;
       cursor: not-allowed;
     }
+    #stopButton {
+      background-color: #dc3545;
+      display: none;
+    }
+    #stopButton:hover {
+      background-color: #c82333;
+    }
     #status {
       margin-top: 10px;
       color: #666;
     }
     .error-status {
       color: #c62828;
+    }
+    .warning-status {
+      color: #e65100;
+    }
+    .success-status {
+      color: #2e7d32;
     }
     .loading {
       display: none;
@@ -108,13 +121,14 @@
   </div>
 
   <button id="exportButton">Export Purchases</button>
+  <button id="stopButton">Stop Export</button>
   <div id="status"></div>
   <div class="loading" id="loading">
-    Processing... Please wait
+    Processing... <span id="progressText"></span>
   </div>
 
   <div class="footer">
-    <span class="version">v1.0.2</span>
+    <span class="version">v1.0.3</span>
     <br>
     Found an issue? <a href="https://github.com/ahhhdum/apple-subscriptions-exporter/issues" target="_blank">Report it here</a>
     <br>
